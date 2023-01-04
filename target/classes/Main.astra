@@ -1,0 +1,142 @@
+agent Main {
+    module EIS ei;
+    module Console C;
+    module Math math;
+    module System sys;
+
+    types tower {
+        formula block(string);
+        formula free(string);
+        formula tower(list);
+    }
+
+// table object is created upon initialising as thing that has nothing on it
+    inference free(string X) :- ~ei.on(string Y, X);
+    inference free(string X) :- X=="table";
+// tower exists when the final block(first in list) is on top of the second last block
+// last block must also be free
+    inference tower(list blocks) :-
+        ei.on(at_index(blocks, 0, string), at_index(blocks, 1, string)) & free(at_index(blocks, 0, string));
+
+
+// tower is created in a reverse for loop
+    rule +!tower(list blocks){
+    // X is the base for next block
+        string X = "table";
+        int i= list_count(blocks)-1;
+        while (i >= 0) {
+        // block is assigned by index from the loops iteration number
+            string block = at_index(blocks, i, string);
+        // holding and On are the same as before
+            !holding(block);
+            !On(block, X);
+        // X is reassigned each iteration
+            X = block;
+            i--;
+        }
+        C.println("Tower Completed!");
+    }
+
+// hold block goal instructions
+// only does when X is free and not already holding anything
+    rule +!holding(string X): ~ei.holding(string Y) & free(X){
+        ei.pickup(X);
+        wait(ei.holding(X));
+    }
+// place block on other object goal instructions
+//does only when already holding X and when Y is free
+    rule +!On(string X, string Y): ei.holding(X) & free(Y){
+        ei.putdown(X, Y);
+        wait(ei.on(X, Y));
+    }
+
+    rule +!random_tower(list blocks){
+    // trigger for when height is equal to the lenght of the array
+        int high = 1;
+        string Y = "table";
+        while(high < list_count(blocks)){
+        // random number to decide where to begin search at
+            int counter = 0+(math.randomInt() % (list_count(blocks)+1));
+            while(counter > 0){
+                forall (string X : blocks) {
+                    // checks if free and if not loops to next block
+                    if(free(X)){
+                        !holding(X);
+                        !On(X, Y);
+                        Y = X;
+                        counter --1;
+                        high ++1;
+                        // when height is reached it breaks the inner loop
+                        //allows outer loop to complete
+                        if(high > list_count(blocks)){
+                            counter = 0;
+                        }
+                    }
+                }
+            }
+        }
+        C.println("Random Tower Completed!");
+
+    }
+// rule to deconstruct tower
+    rule +!floor(list blocks){
+        int down = 1;
+        while(down < list_count(blocks)){
+            forall (string X : blocks) {
+                if(~ei.on(X, "table") & free(X)){
+                    !holding(X);
+                    !On(X, "table");
+                    down++1;
+                }
+            }
+        }
+        C.println("Wait for new random tower");
+
+    }
+
+
+
+    rule +!main(list args) {
+        ei.launch("hw","dependency/tower-1.3.0.jar");
+        ei.init();
+	    ei.start();
+
+	    // ei.join("hw");
+        ei.link("gripper");
+
+
+        C.println("Press New Block until block C is created...");
+        wait(ei.block("c")); // waits for the creation of block C
+        C.println("Block C created. Building tower!");
+        !tower(["a", "d"]); // tower goal called
+
+    // waits until tower 1 is completed
+        wait(tower(["a", "d"]));
+        C.println("Add until block f exists!");
+        wait(ei.block("f"));
+    // builds tower 2
+        !tower(["c", "e", "b", "f"]);
+
+        wait(tower(["c", "e", "b", "f"]));
+
+        wait(ei.block("g"));
+
+        int forev = 0;
+        while(forev ==0){
+            !random_tower(["a", "b", "c","d", "e", "f", "g"]);
+            !floor(["a", "b", "c","d", "e", "f", "g"]);
+            sys.sleep(20000);
+        }
+
+    }
+
+
+    rule +$ei.event(funct Y) {
+        C.println("Y: "+ Y);
+    }
+
+    rule +!pickup(string X) {
+        ei.pickup(X);
+        //...
+    }
+}
